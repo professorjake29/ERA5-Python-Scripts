@@ -63,30 +63,23 @@ vort = vort * 1e5 * units('1/s')
 
 ## Set up vorticity plotting
 
-levels = np.concatenate([np.arange(-40, 1, 10), np.arange(5, 60, 5)])
-# Define colors for the levels
-colors = [
-    "black",       # -40
-    "dimgray",     # -30
-    "gray",        # -20
-    "lightgray",   # -10
-    "white",       # 0
-    "yellow",      # 5
-    "orange",      # 10
-    "red",         # 15
-    "pink",        # 20
-    "purple",      # 25
-    "midnightblue",# 30
-    "blue",        # 35
-    "deepskyblue", # 40
-    "lightskyblue",# 45
-    "lightblue",   # 50
-    "azure"        # 55
+# Define boundaries
+boundaries = list(range(-40, 1, 10)) + list(range(5, 60, 5))  # [-40, -30, ..., 0, 5, ..., 55]
+
+# Define colors
+grayscale = ['black', 'dimgray', 'gray', 'lightgray', 'white']
+colorscale = [
+    'white', 'yellow', 'orange', 'red', 'pink',
+    'purple', 'darkblue', 'blue', 'lightskyblue', 'deepskyblue', 'cyan', 'lightblue'
 ]
 
-# Create custom colormap and norm
+# Combine colors (remove duplicate white)
+colors = grayscale + colorscale[1:]
+
+# Create the colormap and norm
 cmap = ListedColormap(colors)
-norm = BoundaryNorm(boundaries=np.append(levels, levels[-1] + 5), ncolors=len(colors))
+norm = BoundaryNorm(boundaries, ncolors=len(colors))
+
 
 # Set up map
 fig, ax = plt.subplots(figsize=(12, 8), subplot_kw={'projection': ccrs.PlateCarree()})
@@ -98,7 +91,7 @@ ax.add_feature(cfeature.BORDERS, linewidth=0.5)
 ax.add_feature(cfeature.STATES, linewidth=0.5)
 
 # Plot vorticity (shaded)
-cf = ax.contourf(lon_na, lat_na, vort, levels=levels, cmap=cmap, norm = norm, transform=ccrs.PlateCarree(), extend="both")
+cf = ax.contourf(lon_na, lat_na, vort, levels=boundaries, cmap=cmap, norm = norm, transform=ccrs.PlateCarree(), extend="neither")
 
 # Plot geopotential height (contoured)
 cs = ax.contour(lon_na, lat_na, z500_na.squeeze(), levels=np.arange(4800, 6000, 60), colors='black', linewidths=1)
@@ -119,19 +112,21 @@ ax.barbs(
 # Add colorbar for vorticity
 # cbar = plt.colorbar(cf, ax=ax, orientation='horizontal', pad=0.05, shrink=0.8)
 cbar = plt.colorbar(
-    plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+    cf,
     ax=ax,
     orientation='horizontal',
-    ticks=levels,
-    shrink=0.8,
-    pad=0.05,
+    ticks=boundaries,
+    extend='neither',
+    shrink=0.85,
+    pad=0.04,
     aspect=40
 )
+
 cbar.set_label("500 mb Absolute Vorticity (10⁻⁵ s⁻¹)")
 
 # Custom lat/lon labels
-xticks = [-100, -90, -80]
-yticks = [30, 40, 50]
+xticks = [-110, -100, -90, -80, -70, -60]
+yticks = [25, 35, 45, 55]
 ax.set_xticks(xticks, crs=ccrs.PlateCarree())
 ax.set_yticks(yticks, crs=ccrs.PlateCarree())
 ax.set_xticklabels([f"{abs(x)}°W" for x in xticks], fontsize=10)
