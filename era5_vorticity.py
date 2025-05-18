@@ -46,6 +46,8 @@ v500_na = v500.sel(latitude=slice(55, 25), longitude=slice(230, 300))
 z500_na = z500gh.sel(latitude=slice(55, 25), longitude=slice(230, 300))
 lat_na = u500_na.latitude
 lon_na = u500_na.longitude
+lon2d, lat2d = np.meshgrid(lon_na, lat_na)
+
 
 print("Any NaNs in u?", np.isnan(u500.values).any())
 print("Any NaNs in v?", np.isnan(v500.values).any())
@@ -59,7 +61,10 @@ print("dx valid?", np.isfinite(dx).all())
 print("dy valid?", np.isfinite(dy).all())
 
 vort = mpcalc.absolute_vorticity(u500_na.squeeze(), v500_na.squeeze(), dx=dx, dy=dy, latitude=lat_na, longitude = lon_na)
-vort = vort * 1e5 * units('1/s')
+vort = vort * 1e5 
+
+# Calculate temperature advection using metpy function
+vort_adv = mpcalc.advection(vort, u=u500_na, v=v500_na, dx=dx, dy=dy, longitude=lon_na, latitude=lat_na) * 1e4
 
 ## Set up vorticity plotting
 
@@ -79,7 +84,6 @@ colors = grayscale + colorscale[1:]
 # Create the colormap and norm
 cmap = ListedColormap(colors)
 norm = BoundaryNorm(boundaries, ncolors=len(colors))
-
 
 # Set up map
 fig, ax = plt.subplots(figsize=(12, 8), subplot_kw={'projection': ccrs.PlateCarree()})
@@ -136,3 +140,73 @@ ax.set_yticklabels([f"{y}°N" for y in yticks], fontsize=10)
 plt.title("500 mb Vorticity (shaded), Geopotential Height (contoured), and Wind (barbs)", fontsize=14)
 plt.tight_layout()
 plt.show()
+
+
+
+#################################### Vorticity Advection Map ########################################
+
+# Subsample for wind barbs
+skip = 10
+
+#  visually de-emphasize weak advection from -2 to 2 10^-4 k/s
+
+clevs_adv = np.concatenate([
+    np.arange(-30, -5, 5), 
+    np.array([-5, 5]), 
+    np.arange(10, 30, 5)
+])
+
+base_cmap = plt.get_cmap('bwr', len(clevs_adv) - 1)
+# Convert to list and insert white in the center
+colors = base_cmap(np.linspace(0, 1, len(clevs_adv) - 1))
+middle_idx = np.where((clevs_adv[:-1] < 2) & (clevs_adv[1:] > -2))[0]
+for idx in middle_idx:
+    colors[idx] = (1.0, 1.0, 1.0, 1.0)  # RGBA for white
+
+# Create new colormap and norm
+custom_cmap = ListedColormap(colors)
+norm = BoundaryNorm(clevs_adv, ncolors=custom_cmap.N)
+
+# Create figure
+fig = plt.figure(figsize=(12, 8))
+ax = plt.axes(projection=ccrs.PlateCarree())
+ax.set_extent([-110, -60, 25, 55], crs=ccrs.PlateCarree())
+
+# Add map features
+ax.add_feature(cfeature.COASTLINE)
+ax.add_feature(cfeature.BORDERS)
+ax.add_feature(cfeature.STATES, linewidth=0.5)
+
+# Contour vorticity advection
+# cmap = plt.cm.coolwarm
+cmap = plt.get_cmap("RdBu_r")  # Red for cva, blue for ava
+vort_plot = ax.contourf(lon2d, lat2d, vort_adv, levels=np.arange(-30, 31, 5), cmap= custom_cmap, norm = norm, extend='both', transform=ccrs.PlateCarree())
+
+clevs_adv_custom = np.concatenate([
+    np.arange(-30, 31, 5)
+])
+
+# Add color bar
+cbar = plt.colorbar(vort_plot, orientation='horizontal', pad=0.05, aspect=40, shrink=0.8, ticks = clevs_adv_custom)
+cbar.set_label(r'Vorticity Advection ($10^{-9}$ ( $s^{-2}$ ))')
+
+# Contour 500 mb vorticity in dashed grey
+temp_levels = np.arange(-40, 41, 2)  # adjust range as needed
+
+temp_contours = ax.contour(
+    lon_na, lat_na, vort, levels=temp_levels,
+    colors='grey', linestyles='dashed',
+    linewidths=1, transform=ccrs.PlateCarree()
+)
+
+# Contour geopotential height (every 60 m)
+height_contours = ax.contour(lon2d, lat2d, z500_na, levels=np.arange(np.nanmin(z500gh), np.nanmax(z500gh), 60), colors='black', linewidths=1)
+ax.clabel(height_contours, inline=True, fontsize=8, fmt='%d')
+
+# Plot wind barbs
+ax.barbs(lon2d[::skip, ::skip], lat2d[::skip, ::skip], 
+         u500_na.values[::skip, ::skip], v500_na.values[::skip, ::skip],
+         transform=ccrs.PlateCarree(), length=5, linewidth = 0.5)
+
+# Title
+plt.title("500 mb Vorticity Advection (shaded), Wind Barbs, and Geopotential Height (contours)")
